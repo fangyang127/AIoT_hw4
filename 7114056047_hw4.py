@@ -166,8 +166,15 @@ else:
         print(f"Accuracy: {acc}")
 
         # 儲存模型為 SavedModel 資料夾（TensorFlow 原生格式，部署相容性較佳）
-        model.save(MODEL_DIR)
-        print(f"Model saved to {MODEL_DIR}")
+        try:
+            # Keras v3+ 提供 model.export() 以輸出 SavedModel
+            model.export(MODEL_DIR)
+            print(f"Model exported (SavedModel) to {MODEL_DIR} using model.export()")
+        except Exception:
+            # fallback: 使用 TensorFlow 的 saved_model API（相容較舊/不同版本）
+            import tensorflow as _tf
+            _tf.saved_model.save(model, MODEL_DIR)
+            print(f"Model saved (SavedModel) to {MODEL_DIR} using tf.saved_model.save()")
 
     # 同時壓縮成 zip，方便上傳到 Releases
     try:
