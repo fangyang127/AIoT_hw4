@@ -16,6 +16,9 @@ import PIL.Image as Image
 from PIL import ImageOps, ImageEnhance
 import streamlit as st
 import io
+import requests
+import zipfile
+import shutil
 
 # 辨識類別
 category_en = "crested_myna,javan_myna,common_myna"
@@ -99,42 +102,81 @@ x_train = preprocess_input(data)
 y_train = to_categorical(target, N)
 # 模型保存路徑（SavedModel 資料夾）
 MODEL_DIR = 'myna_model'
+MODEL_ZIP = 'myna_model.zip'
+# 可設定環境變數 `MODEL_ZIP_URL` 指向已上傳的 release asset URL
+MODEL_ZIP_URL = os.getenv('MODEL_ZIP_URL')
 
 # 若存在 SavedModel 資料夾則載入（優先）；否則訓練並儲存為 SavedModel
+def download_and_extract_zip(url, target_dir, zip_name=MODEL_ZIP):
+    try:
+        print(f"Downloading model zip from {url} ...")
+        r = requests.get(url, stream=True, timeout=60)
+        r.raise_for_status()
+        with open(zip_name, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        # extract
+        with zipfile.ZipFile(zip_name, 'r') as z:
+            z.extractall(target_dir)
+        print(f"Extracted {zip_name} to {target_dir}")
+        return True
+    except Exception as e:
+        print(f"Download or extract failed: {e}")
+        return False
+
+
 if os.path.exists(MODEL_DIR):
     print(f"Loading SavedModel from {MODEL_DIR} ...")
     model = load_model(MODEL_DIR)
 else:
-    # 建立模型
-    resnet = ResNet50V2(include_top=False, pooling="avg")
-    # 建立序列模型
-    model = Sequential()
-    # 加入 ResNet50V2 作為特徵擷取器
-    model.add(resnet)
-    # 加入輸出層
-    model.add(Dense(N, activation='softmax'))
-    # 凍結 ResNet50V2 的權重
-    resnet.trainable = False
+    # 如果設定了 MODEL_ZIP_URL，嘗試下載並解壓
+    if MODEL_ZIP_URL:
+        ok = download_and_extract_zip(MODEL_ZIP_URL, MODEL_DIR)
+        if ok and os.path.exists(MODEL_DIR):
+            print(f"Loading SavedModel from downloaded {MODEL_DIR} ...")
+            model = load_model(MODEL_DIR)
+    # 若仍未載入，進入訓練流程
+    if 'model' not in globals():
+        # 建立模型
+        resnet = ResNet50V2(include_top=False, pooling="avg")
+        # 建立序列模型
+        model = Sequential()
+        # 加入 ResNet50V2 作為特徵擷取器
+        model.add(resnet)
+        # 加入輸出層
+        model.add(Dense(N, activation='softmax'))
+        # 凍結 ResNet50V2 的權重
+        resnet.trainable = False
 
-    # 顯示模型摘要
-    model.summary()
+        # 顯示模型摘要
+        model.summary()
 
-    # 編譯模型
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
-                  metrics=['accuracy'])
+        # 編譯模型
+        model.compile(loss='categorical_crossentropy',
+                      optimizer='adam',
+                      metrics=['accuracy'])
 
-    # 訓練模型（可依需求調整 batch_size、epochs）
-    model.fit(x_train, y_train, batch_size=10, epochs=10)
+        # 訓練模型（可依需求調整 batch_size、epochs）
+        model.fit(x_train, y_train, batch_size=10, epochs=10)
 
-    # 評估模型
-    loss, acc = model.evaluate(x_train, y_train)
-    print(f"Loss: {loss}")
-    print(f"Accuracy: {acc}")
+        # 評估模型
+        loss, acc = model.evaluate(x_train, y_train)
+        print(f"Loss: {loss}")
+        print(f"Accuracy: {acc}")
 
-    # 儲存模型為 SavedModel 資料夾（TensorFlow 原生格式，部署相容性較佳）
-    model.save(MODEL_DIR)
-    print(f"Model saved to {MODEL_DIR}")
+        # 儲存模型為 SavedModel 資料夾（TensorFlow 原生格式，部署相容性較佳）
+        model.save(MODEL_DIR)
+        print(f"Model saved to {MODEL_DIR}")
+
+    # 同時壓縮成 zip，方便上傳到 Releases
+    try:
+        if os.path.exists(MODEL_ZIP):
+            os.remove(MODEL_ZIP)
+        shutil.make_archive('myna_model', 'zip', MODEL_DIR)
+        print(f"Created {MODEL_ZIP}")
+    except Exception as e:
+        print(f"Failed to create zip: {e}")
 
     y_predict = np.argmax(model.predict(x_train), -1)
 
