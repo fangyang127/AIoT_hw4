@@ -163,11 +163,38 @@ st.write(description)
 
 st.sidebar.header("操作")
 st.sidebar.write("上傳一張八哥照片後點選『分類』來取得結果。若尚未訓練模型，第一次會花時間訓練並儲存 `myna_model.h5`。")
+# 準備範例圖片清單（從本地 myna/ 資料夾）
+sample_items = []
+for cat in categories:
+    thedir = os.path.join(base_dir, cat)
+    if os.path.isdir(thedir):
+        for fname in os.listdir(thedir):
+            if fname.lower().endswith(('.png', '.jpg', '.jpeg')):
+                display_name = f"{cat}/{fname}"
+                sample_items.append((display_name, os.path.join(thedir, fname)))
+
+sample_display = ['(無)'] + [s[0] for s in sample_items]
+sample_choice = st.sidebar.selectbox('範例圖片', options=sample_display)
+if 'selected_image' not in st.session_state:
+    st.session_state['selected_image'] = None
+
+if st.sidebar.button('載入範例') and sample_choice != '(無)':
+    # 找到對應路徑並載入到 session state
+    idx = sample_display.index(sample_choice) - 1
+    sample_path = sample_items[idx][1]
+    try:
+        st.session_state['selected_image'] = Image.open(sample_path).convert('RGB')
+    except Exception as e:
+        st.sidebar.error(f"載入範例失敗: {e}")
 
 uploaded_file = st.file_uploader("上傳八哥照片", type=['png','jpg','jpeg'])
 if uploaded_file is not None:
-    img = Image.open(io.BytesIO(uploaded_file.read())).convert('RGB')
-    st.image(img, caption='上傳圖像', use_column_width=True)
+    # 使用者上傳圖片，覆寫 session 中的 selected_image
+    st.session_state['selected_image'] = Image.open(io.BytesIO(uploaded_file.read())).convert('RGB')
+
+if st.session_state['selected_image'] is not None:
+    img = st.session_state['selected_image']
+    st.image(img, caption='選擇的圖像', use_column_width=True)
 
     # 等使用者按下按鈕才執行分類，避免每次上傳就執行
     if st.button('分類'):
