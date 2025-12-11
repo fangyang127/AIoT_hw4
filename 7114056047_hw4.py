@@ -98,16 +98,12 @@ x_train = preprocess_input(data)
 
 y_train = to_categorical(target, N)
 # 模型保存路徑（可修改）
-MODEL_PATH = 'myna_model'
 MODEL_H5 = 'myna_model.h5'
 
-# 若存在 .h5 檔則優先載入（方便移植與下載），否則若存在 SavedModel 資料夾則載入
+# 若存在 .h5 檔則載入（方便移植與下載），否則訓練並儲存為 .h5
 if os.path.exists(MODEL_H5):
     print(f"Loading model from {MODEL_H5} ...")
     model = load_model(MODEL_H5)
-elif os.path.exists(MODEL_PATH):
-    print(f"Loading model from {MODEL_PATH} ...")
-    model = load_model(MODEL_PATH)
 else:
     # 建立模型
     resnet = ResNet50V2(include_top=False, pooling="avg")
@@ -136,10 +132,9 @@ else:
     print(f"Loss: {loss}")
     print(f"Accuracy: {acc}")
 
-    # 儲存模型（SavedModel 格式與 .h5，方便部署與下載）
-    model.save(MODEL_PATH)
+    # 儲存模型為 .h5（方便部署與下載）
     model.save(MODEL_H5)
-    print(f"Model saved to {MODEL_PATH} and {MODEL_H5}")
+    print(f"Model saved to {MODEL_H5}")
 
     y_predict = np.argmax(model.predict(x_train), -1)
 
