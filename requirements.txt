@@ -1,6 +1,10 @@
-tensorflow
+tensorflow==2.13.0
 pillow
 streamlit
 numpy
 pandas
 matplotlib
+
+# NOTE: TensorFlow is pinned to the local development version (2.13.0).
+# If you need GPU-enabled TensorFlow, install the appropriate package
+# for your platform (for example `pip install tensorflow==2.13.0`).
