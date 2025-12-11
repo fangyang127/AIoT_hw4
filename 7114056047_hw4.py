@@ -1,0 +1,162 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import random
+
+from tensorflow.keras.applications import ResNet50V2
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.applications.resnet_v2 import preprocess_input
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+
+import os
+import PIL.Image as Image
+from PIL import ImageOps, ImageEnhance
+import streamlit as st
+import io
+
+# 辨識類別
+category_en = "crested_myna,javan_myna,common_myna"
+
+# 辨識類別的中文, 顯示時用的名稱
+category_zh = "土八哥,白尾八哥,家八哥"
+
+# APP 的名稱
+title = "八哥辨識器"
+
+# APP 的說明
+description="請輸入一張八哥照片, 我會告訴你是什麼八哥!"
+
+categories = category_en.split(',')
+labels = category_zh.split(',')
+
+# 辨識有幾類
+N = len(categories)
+
+# 讀取圖片資料
+base_dir = 'myna/'
+thedir = base_dir + categories[0]
+data = []
+target = []
+
+# Data augmentation settings
+USE_AUGMENT = True
+AUGMENT_PER_IMAGE = 2
+
+def augment_array(x_arr):
+    # x_arr: NumPy array HxWxC, dtype float或uint8
+    img_pil = Image.fromarray(np.uint8(x_arr))
+
+    # 隨機水平翻轉
+    if random.random() < 0.5:
+        img_pil = ImageOps.mirror(img_pil)
+
+    # 隨機旋轉（-25 到 25 度）
+    angle = random.uniform(-25, 25)
+    img_pil = img_pil.rotate(angle)
+
+    # 隨機亮度與對比度調整
+    enhancer = ImageEnhance.Brightness(img_pil)
+    img_pil = enhancer.enhance(random.uniform(0.8, 1.2))
+    enhancer = ImageEnhance.Contrast(img_pil)
+    img_pil = enhancer.enhance(random.uniform(0.8, 1.2))
+
+    # 隨機加入高斯雜訊
+    arr = np.array(img_pil).astype(np.float32)
+    if random.random() < 0.3:
+        noise = np.random.normal(0, 5, arr.shape)
+        arr = arr + noise
+        arr = np.clip(arr, 0, 255)
+
+    # 確保尺寸仍為 224x224
+    img_resized = Image.fromarray(np.uint8(arr)).resize((224,224), Image.Resampling.LANCZOS)
+    return np.array(img_resized)
+
+# 讀取所有圖片並轉成 NumPy 陣列
+for i in range(N):
+    thedir = base_dir + categories[i]
+    file_names = os.listdir(thedir)
+    for fname in file_names:
+        img_path = thedir + '/' + fname
+        img = load_img(img_path , target_size = (224,224))
+        x = img_to_array(img)
+        data.append(x)
+        target.append(i)
+
+        if USE_AUGMENT:
+            for _ in range(AUGMENT_PER_IMAGE):
+                aug = augment_array(x)
+                data.append(aug)
+                target.append(i)
+
+data = np.array(data)
+
+# 將圖片資料做前處理
+x_train = preprocess_input(data)
+
+y_train = to_categorical(target, N)
+
+# 建立模型
+resnet = ResNet50V2(include_top=False, pooling="avg")
+# 建立序列模型
+model = Sequential()
+# 加入 ResNet50V2 作為特徵擷取器
+model.add(resnet)
+# 加入輸出層
+model.add(Dense(N, activation='softmax'))
+#凍結 ResNet50V2 的權重
+resnet.trainable = False
+
+# 顯示模型摘要
+model.summary()
+
+# 編譯模型
+model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
+              metrics=['accuracy'])
+
+# 訓練模型
+model.fit(x_train, y_train, batch_size=10, epochs=10)
+
+# 評估模型
+loss, acc = model.evaluate(x_train, y_train)
+print(f"Loss: {loss}")
+print(f"Accuracy: {acc}")
+
+y_predict = np.argmax(model.predict(x_train), -1)
+
+def resize_image(inp):
+    # 將 NumPy array 轉換成 PIL Image 對象
+    img = Image.fromarray(inp)
+
+    # 將圖片調整為 224x224 像素
+    img_resized = img.resize((224, 224), Image.Resampling.LANCZOS)
+
+    # 將調整大小後的圖片轉換回 NumPy array
+    img_array = np.array(img_resized)
+
+    return img_array
+
+def classify_image(inp):
+    img_array = resize_image(inp)
+    inp = img_array.reshape((1, 224, 224, 3))
+    inp = preprocess_input(inp)
+    prediction = model.predict(inp).flatten()
+    return {labels[i]: float(prediction[i]) for i in range(N)}
+# ------------------ Streamlit app ------------------
+st.set_page_config(page_title=title)
+st.title(title)
+st.write(description)
+
+uploaded_file = st.file_uploader("上傳八哥照片", type=['png','jpg','jpeg'])
+if uploaded_file is not None:
+    img = Image.open(io.BytesIO(uploaded_file.read())).convert('RGB')
+    st.image(img, caption='上傳圖像', use_column_width=True)
+    arr = np.array(img)
+    preds = classify_image(arr)
+    df = pd.DataFrame(list(preds.items()), columns=['species','probability']).sort_values('probability', ascending=False)
+    st.table(df)
+
+st.markdown("---")
+st.write("本程式支援本機訓練與辨識；如需部署，可將此資料夾 push 到 GitHub，並以 Streamlit 部署或在本機執行 `streamlit run 7114056047_hw4.py`。")
