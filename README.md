@@ -37,3 +37,5 @@ git commit -m "Add myna bird classifier with augmentation and streamlit UI"
 
 注意
 - 若你的環境沒有 GPU 或記憶體有限，請在程式中將 `USE_AUGMENT=False` 或減少 `AUGMENT_PER_IMAGE`，以及減少 `epochs` 或 `batch_size`。
+ - 本程式會在第一次執行時訓練模型並將其儲存在 `myna_model`（SavedModel 格式）。後續執行會自動載入 `myna_model`，因此不需要每次啟動時重新訓練。
+ - 本程式會在第一次執行時訓練模型並將其儲存在 `myna_model`（SavedModel 格式）與 `myna_model.h5`，後續執行會優先載入 `myna_model.h5`（若存在），因此不需要每次啟動時重新訓練。

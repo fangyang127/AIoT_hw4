@@ -5,6 +5,7 @@ import random
 
 from tensorflow.keras.applications import ResNet50V2
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.applications.resnet_v2 import preprocess_input
@@ -96,35 +97,51 @@ data = np.array(data)
 x_train = preprocess_input(data)
 
 y_train = to_categorical(target, N)
+# 模型保存路徑（可修改）
+MODEL_PATH = 'myna_model'
+MODEL_H5 = 'myna_model.h5'
 
-# 建立模型
-resnet = ResNet50V2(include_top=False, pooling="avg")
-# 建立序列模型
-model = Sequential()
-# 加入 ResNet50V2 作為特徵擷取器
-model.add(resnet)
-# 加入輸出層
-model.add(Dense(N, activation='softmax'))
-#凍結 ResNet50V2 的權重
-resnet.trainable = False
+# 若存在 .h5 檔則優先載入（方便移植與下載），否則若存在 SavedModel 資料夾則載入
+if os.path.exists(MODEL_H5):
+    print(f"Loading model from {MODEL_H5} ...")
+    model = load_model(MODEL_H5)
+elif os.path.exists(MODEL_PATH):
+    print(f"Loading model from {MODEL_PATH} ...")
+    model = load_model(MODEL_PATH)
+else:
+    # 建立模型
+    resnet = ResNet50V2(include_top=False, pooling="avg")
+    # 建立序列模型
+    model = Sequential()
+    # 加入 ResNet50V2 作為特徵擷取器
+    model.add(resnet)
+    # 加入輸出層
+    model.add(Dense(N, activation='softmax'))
+    # 凍結 ResNet50V2 的權重
+    resnet.trainable = False
 
-# 顯示模型摘要
-model.summary()
+    # 顯示模型摘要
+    model.summary()
 
-# 編譯模型
-model.compile(loss='categorical_crossentropy',
-              optimizer='adam',
-              metrics=['accuracy'])
+    # 編譯模型
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
 
-# 訓練模型
-model.fit(x_train, y_train, batch_size=10, epochs=10)
+    # 訓練模型（可依需求調整 batch_size、epochs）
+    model.fit(x_train, y_train, batch_size=10, epochs=10)
 
-# 評估模型
-loss, acc = model.evaluate(x_train, y_train)
-print(f"Loss: {loss}")
-print(f"Accuracy: {acc}")
+    # 評估模型
+    loss, acc = model.evaluate(x_train, y_train)
+    print(f"Loss: {loss}")
+    print(f"Accuracy: {acc}")
 
-y_predict = np.argmax(model.predict(x_train), -1)
+    # 儲存模型（SavedModel 格式與 .h5，方便部署與下載）
+    model.save(MODEL_PATH)
+    model.save(MODEL_H5)
+    print(f"Model saved to {MODEL_PATH} and {MODEL_H5}")
+
+    y_predict = np.argmax(model.predict(x_train), -1)
 
 def resize_image(inp):
     # 將 NumPy array 轉換成 PIL Image 對象
