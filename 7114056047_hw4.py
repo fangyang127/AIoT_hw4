@@ -161,14 +161,38 @@ st.set_page_config(page_title=title)
 st.title(title)
 st.write(description)
 
+st.sidebar.header("操作")
+st.sidebar.write("上傳一張八哥照片後點選『分類』來取得結果。若尚未訓練模型，第一次會花時間訓練並儲存 `myna_model.h5`。")
+
 uploaded_file = st.file_uploader("上傳八哥照片", type=['png','jpg','jpeg'])
 if uploaded_file is not None:
     img = Image.open(io.BytesIO(uploaded_file.read())).convert('RGB')
     st.image(img, caption='上傳圖像', use_column_width=True)
-    arr = np.array(img)
-    preds = classify_image(arr)
-    df = pd.DataFrame(list(preds.items()), columns=['species','probability']).sort_values('probability', ascending=False)
-    st.table(df)
+
+    # 等使用者按下按鈕才執行分類，避免每次上傳就執行
+    if st.button('分類'):
+        with st.spinner('正在分析圖片，請稍候...'):
+            arr = np.array(img)
+            preds = classify_image(arr)
+
+        # 整理成 DataFrame，並由高到低排序
+        df = pd.DataFrame(list(preds.items()), columns=['species','probability'])
+        df['probability'] = df['probability'].astype(float)
+        df = df.sort_values('probability', ascending=False).reset_index(drop=True)
+
+        # 顯示 Top-1 結果
+        top_species = df.loc[0, 'species']
+        top_prob = df.loc[0, 'probability']
+        st.markdown(f"### 預測結果： **{top_species}**  ({top_prob*100:.1f}%)")
+
+        # 顯示所有類別的機率長條圖與表格
+        st.subheader('各類別機率')
+        chart_df = df.set_index('species')
+        st.bar_chart(chart_df)
+        st.table(df)
+
+else:
+    st.info('請在左側或此處上傳一張八哥照片，然後按「分類」。')
 
 st.markdown("---")
 st.write("本程式支援本機訓練與辨識；如需部署，可將此資料夾 push 到 GitHub，並以 Streamlit 部署或在本機執行 `streamlit run 7114056047_hw4.py`。")
